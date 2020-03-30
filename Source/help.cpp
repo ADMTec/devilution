@@ -1,3 +1,8 @@
+/**
+ * @file help.cpp
+ *
+ * Implementation of the in-game help text.
+ */
 #include "all.h"
 
 int help_select_line;
@@ -545,7 +550,7 @@ void DrawHelpLine(int always_0, int help_line_nr, char *text, char color)
 		width += fontkern[c] + 1;
 		if (c) {
 			if (width <= 577)
-				CPrintString(off, c, color);
+				PrintChar(off, c, color);
 		}
 		off += fontkern[c] + 1;
 	}

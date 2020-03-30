@@ -1,3 +1,8 @@
+/**
+ * @file diablo.cpp
+ *
+ * Implementation of the main game initialization functions.
+ */
 #include "all.h"
 #include "../3rdParty/Storm/Source/storm.h"
 #include "../DiabloUI/diabloui.h"
@@ -22,11 +27,13 @@ int DebugMonsters[10];
 BOOLEAN cineflag;
 int force_redraw;
 BOOL visiondebug;
-BOOL scrollflag; /* unused */
+/** unused */
+BOOL scrollflag;
 BOOL light4flag;
 BOOL leveldebug;
 BOOL monstdebug;
-BOOL trigdebug; /* unused */
+/** unused */
+BOOL trigdebug;
 int setseed;
 int debugmonsttypes;
 int PauseMode;
@@ -36,6 +43,10 @@ int color_cycle_timer;
 
 /* rdata */
 
+/**
+ * Specifies whether to give the game exclusive access to the
+ * screen, as needed for efficient rendering in fullscreen mode.
+ */
 BOOL fullscreen = TRUE;
 #ifdef _DEBUG
 int showintrodebug = 1;
@@ -55,13 +66,16 @@ int frameend;
 int framerate;
 int framestart;
 #endif
+/** Specifies whether players are in non-PvP mode. */
 BOOL FriendlyMode = TRUE;
+/** Default quick messages */
 char *spszMsgTbl[4] = {
 	"I need help! Come Here!",
 	"Follow me.",
 	"Here's something for you.",
 	"Now you DIE!"
 };
+/** INI files variable names for quick message keys */
 char *spszMsgHotKeyTbl[4] = { "F9", "F10", "F11", "F12" };
 
 void FreeGameMem()
@@ -77,7 +91,7 @@ void FreeGameMem()
 	FreeMissiles();
 	FreeMonsters();
 	FreeObjectGFX();
-	FreeEffects();
+	FreeMonsterSnd();
 	FreeTownerGFX();
 }
 
@@ -130,7 +144,7 @@ void run_game_loop(unsigned int uMsg)
 	/// ASSERT: assert(ghMainWnd);
 	saveProc = SetWindowProc(GM_Game);
 	control_update_life_mana();
-	msg_process_net_packets();
+	run_delta_info();
 	gbRunGame = TRUE;
 	gbProcessPlayers = TRUE;
 	gbRunGameResult = TRUE;
@@ -236,6 +250,13 @@ BOOL diablo_get_not_running()
 	return GetLastError() != ERROR_ALREADY_EXISTS;
 }
 
+/**
+ * @brief Main entry point, check env, initialize systesm, play intros, start main menu, shut down
+ * @param hInstance A handle to the current instance of the application.
+ * @param hPrevInstance Always null
+ * @param lpCmdLine The command line for the application
+ * @param nCmdShow Initial window state
+ */
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 	HINSTANCE hInst;
@@ -270,7 +291,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 		diablo_init_screen();
 		diablo_parse_flags(lpCmdLine);
 		init_create_window(nCmdShow);
-		sound_init();
+		ui_sound_init();
 		UiInitialize();
 #ifdef SPAWN
 		UiSetSpawned(TRUE);
@@ -603,7 +624,7 @@ BOOL PressEscKey()
 
 	if (qtextflag) {
 		qtextflag = FALSE;
-		sfx_stop();
+		stream_stop();
 		rv = TRUE;
 	} else if (stextflag) {
 		STextESC();
@@ -756,7 +777,7 @@ LRESULT CALLBACK GM_Game(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			pfile_write_hero();
 		nthread_ignore_mutex(TRUE);
 		PaletteFadeOut(8);
-		FreeMonsterSnd();
+		sound_stop();
 		music_stop();
 		track_repeat_walk(FALSE);
 		sgbMouseDown = 0;
@@ -787,12 +808,12 @@ BOOL LeftMouseDown(int wParam)
 			} else if (stextflag) {
 				CheckStoreBtn();
 			} else if (MouseY < PANEL_TOP) {
-				if (!gmenu_exception() && !TryIconCurs()) {
+				if (!gmenu_is_active() && !TryIconCurs()) {
 					if (questlog && MouseX > 32 && MouseX < 288 && MouseY > 32 && MouseY < 308) {
 						QuestlogESC();
 					} else if (qtextflag) {
 						qtextflag = FALSE;
-						sfx_stop();
+						stream_stop();
 					} else if (chrflag && MouseX < 320) {
 						CheckChrBtns();
 					} else if (invflag && MouseX > RIGHT_PANEL) {
@@ -813,7 +834,7 @@ BOOL LeftMouseDown(int wParam)
 					}
 				}
 			} else {
-				if (!talkflag && !dropGoldFlag && !gmenu_exception())
+				if (!talkflag && !dropGoldFlag && !gmenu_is_active())
 					CheckInvScrn();
 				DoPanBtn();
 				if (pcurs > CURSOR_HAND && pcurs < CURSOR_FIRSTITEM)
@@ -946,7 +967,7 @@ void LeftMouseUp()
 
 void RightMouseDown()
 {
-	if (!gmenu_exception() && sgnTimeoutCurs == CURSOR_NONE && PauseMode != 2 && !plr[myplr]._pInvincible) {
+	if (!gmenu_is_active() && sgnTimeoutCurs == CURSOR_NONE && PauseMode != 2 && !plr[myplr]._pInvincible) {
 		if (doomflag) {
 			doom_close();
 		} else if (!stextflag) {
@@ -969,7 +990,7 @@ void RightMouseDown()
 
 BOOL PressSysKey(int wParam)
 {
-	if (gmenu_exception() || wParam != VK_F10)
+	if (gmenu_is_active() || wParam != VK_F10)
 		return FALSE;
 	diablo_hotkey_msg(1);
 	return TRUE;
@@ -1037,7 +1058,7 @@ void PressKey(int vkey)
 	if (vkey == VK_ESCAPE) {
 		if (!PressEscKey()) {
 			track_repeat_walk(FALSE);
-			gamemenu_previous();
+			gamemenu_on();
 		}
 		return;
 	}
@@ -1076,7 +1097,7 @@ void PressKey(int vkey)
 			spselflag = FALSE;
 			if (qtextflag && leveltype == DTYPE_TOWN) {
 				qtextflag = FALSE;
-				sfx_stop();
+				stream_stop();
 			}
 			questlog = FALSE;
 			automapflag = FALSE;
@@ -1198,7 +1219,7 @@ void PressKey(int vkey)
 		spselflag = FALSE;
 		if (qtextflag && leveltype == DTYPE_TOWN) {
 			qtextflag = FALSE;
-			sfx_stop();
+			stream_stop();
 		}
 		questlog = FALSE;
 		automapflag = FALSE;
@@ -1215,17 +1236,19 @@ void diablo_pause_game()
 			PauseMode = 0;
 		} else {
 			PauseMode = 2;
-			FreeMonsterSnd();
+			sound_stop();
 			track_repeat_walk(FALSE);
 		}
 		force_redraw = 255;
 	}
 }
 
-/* NOTE: `return` must be used instead of `break` to be bin exact as C++ */
+/**
+ * @internal `return` must be used instead of `break` to be bin exact as C++
+ */
 void PressChar(int vkey)
 {
-	if (gmenu_exception() || control_talk_last_key(vkey) || sgnTimeoutCurs != 0 || deathflag) {
+	if (gmenu_is_active() || control_talk_last_key(vkey) || sgnTimeoutCurs != 0 || deathflag) {
 		return;
 	}
 	if ((char)vkey == 'p' || (char)vkey == 'P') {
@@ -1799,7 +1822,7 @@ void LoadGameLevel(BOOL firstflag, int lvldir)
 		;
 
 #ifndef SPAWN
-	if (setlevel && setlvlnum == SL_SKELKING && quests[QTYPE_KING]._qactive == 2)
+	if (setlevel && setlvlnum == SL_SKELKING && quests[Q_SKELKING]._qactive == QUEST_ACTIVE)
 		PlaySFX(USFX_SKING1);
 #endif
 }
@@ -1831,12 +1854,12 @@ void game_logic()
 	if (PauseMode == 1) {
 		PauseMode = 2;
 	}
-	if (gbMaxPlayers == 1 && gmenu_exception()) {
+	if (gbMaxPlayers == 1 && gmenu_is_active()) {
 		force_redraw |= 1;
 		return;
 	}
 
-	if (!gmenu_exception() && sgnTimeoutCurs == 0) {
+	if (!gmenu_is_active() && sgnTimeoutCurs == 0) {
 		CheckCursMove();
 		track_process();
 	}

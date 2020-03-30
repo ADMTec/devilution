@@ -1,3 +1,8 @@
+/**
+ * @file control.cpp
+ *
+ * Implementation of the character and main control panels
+ */
 #include "all.h"
 
 BYTE sgbNextTalkSave;
@@ -18,7 +23,8 @@ BOOL drawmanaflag;
 BOOL chrbtnactive;
 char sgszTalkMsg[MAX_SEND_STR_LEN];
 BYTE *pPanelText;
-int nGoldFrame; /** current frame # for the pentagram caret in gold input */
+/** current frame # for the pentagram caret in gold input */
+int nGoldFrame;
 BYTE *pLifeBuff;
 BYTE *pBtmBuff;
 BYTE *pTalkBtns;
@@ -36,7 +42,8 @@ char tempstr[256];
 BOOLEAN whisper[MAX_PLRS];
 int sbooktab;
 int pSplType;
-int frame; /** current frame # for the pentagram caret in chat input */
+/** current frame # for the pentagram caret in chat input */
+int frame;
 int initialDropGoldIndex;
 BOOL talkflag;
 BYTE *pSBkIconCels;
@@ -44,7 +51,7 @@ BOOL sbookflag;
 BOOL chrflag;
 BOOL drawbtnflag;
 BYTE *pSpellBkCel;
-char infostr[MAX_PATH];
+char infostr[256];
 int numpanbtns;
 BYTE *pStatusPanel;
 char panelstr[4][64];
@@ -56,6 +63,7 @@ BOOL panbtndown;
 BYTE *pTalkPanel;
 BOOL spselflag;
 
+/** Maps from font index to smaltext.cel frame number. */
 const BYTE fontframe[128] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -66,6 +74,12 @@ const BYTE fontframe[128] = {
 	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 	16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 40, 66, 41, 67, 0
 };
+
+/**
+ * Maps from smaltext.cel frame number to character width. Note, the
+ * character width may be distinct from the frame width, which is 13 for every
+ * smaltext.cel frame.
+ */
 const BYTE fontkern[68] = {
 	8, 10, 7, 9, 8, 7, 6, 8, 8, 3,
 	3, 8, 6, 11, 9, 10, 6, 9, 9, 6,
@@ -76,36 +90,36 @@ const BYTE fontkern[68] = {
 	4, 4, 9, 6, 6, 12, 3, 7
 };
 /**
- * Line height for info box when displaying 1, 2, 3, 4 and 5 lines respectivly
+ * Line start position for info box text when displaying 1, 2, 3, 4 and 5 lines respectivly
  */
 const int lineOffsets[5][5] = {
 	{
 	    SCREENXY(177, 434),
-	    BUFFER_WIDTH * 32,
-	    BUFFER_WIDTH * 32,
-	    BUFFER_WIDTH * 32,
-	    BUFFER_WIDTH * 32 + 180,
+	    SCREENXY(-64, -128),
+	    SCREENXY(-64, -128),
+	    SCREENXY(-64, -128),
+	    SCREENXY(116, -128),
 	},
 	{
 	    SCREENXY(177, 422),
 	    SCREENXY(177, 446),
-	    BUFFER_WIDTH * 32,
-	    BUFFER_WIDTH * 32,
-	    BUFFER_WIDTH * 32,
+	    SCREENXY(-64, -128),
+	    SCREENXY(-64, -128),
+	    SCREENXY(-64, -128),
 	},
 	{
 	    SCREENXY(177, 416),
 	    SCREENXY(177, 434),
 	    SCREENXY(177, 452),
-	    BUFFER_WIDTH * 32,
-	    BUFFER_WIDTH * 32,
+	    SCREENXY(-64, -128),
+	    SCREENXY(-64, -128),
 	},
 	{
 	    SCREENXY(177, 412),
 	    SCREENXY(177, 427),
 	    SCREENXY(177, 441),
 	    SCREENXY(177, 456),
-	    BUFFER_WIDTH * 32,
+	    SCREENXY(-64, -128),
 	},
 	{
 	    SCREENXY(177, 410),
@@ -115,6 +129,12 @@ const int lineOffsets[5][5] = {
 	    SCREENXY(177, 457),
 	}
 };
+
+/**
+ * Maps ASCII character code to font index, as used by the
+ * small, medium and large sized fonts; which corresponds to smaltext.cel,
+ * medtexts.cel and bigtgold.cel respectively.
+ */
 const BYTE gbFontTransTbl[256] = {
 	// clang-format off
 	'\0', 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
@@ -138,6 +158,7 @@ const BYTE gbFontTransTbl[256] = {
 
 /* data */
 
+/** Maps from spell_id to spelicon.cel frame number. */
 char SpellITbl[MAX_SPELLS] = {
 	1,
 	1,
@@ -177,7 +198,9 @@ char SpellITbl[MAX_SPELLS] = {
 	36,
 	30,
 };
+/** Maps from panel_button_id to the position and dimensions of a panel button. */
 int PanBtnPos[8][5] = {
+	// clang-format off
 	{ PANEL_LEFT +   9, PANEL_TOP +   9, 71, 19, 1 }, // char button
 	{ PANEL_LEFT +   9, PANEL_TOP +  35, 71, 19, 0 }, // quests button
 	{ PANEL_LEFT +   9, PANEL_TOP +  75, 71, 19, 1 }, // map button
@@ -186,8 +209,11 @@ int PanBtnPos[8][5] = {
 	{ PANEL_LEFT + 560, PANEL_TOP +  35, 71, 19, 0 }, // spells button
 	{ PANEL_LEFT +  87, PANEL_TOP +  91, 33, 32, 1 }, // chat button
 	{ PANEL_LEFT + 527, PANEL_TOP +  91, 33, 32, 1 }, // friendly fire button
+	// clang-format on
 };
+/** Maps from panel_button_id to hotkey name. */
 char *PanBtnHotKey[8] = { "'c'", "'q'", "Tab", "Esc", "'i'", "'b'", "Enter", NULL };
+/** Maps from panel_button_id to panel button description. */
 char *PanBtnStr[8] = {
 	"Character Information",
 	"Quests log",
@@ -198,6 +224,7 @@ char *PanBtnStr[8] = {
 	"Send Message",
 	"Player Attack"
 };
+/** Maps from attribute_id to the rectangle on screen used for attribute increment buttons. */
 RECT32 ChrBtnsRect[4] = {
 	{ 137, 138, 41, 22 },
 	{ 137, 166, 41, 22 },
@@ -205,6 +232,7 @@ RECT32 ChrBtnsRect[4] = {
 	{ 137, 223, 41, 22 }
 };
 
+/** Maps from spellbook page number and position to spell_id. */
 int SpellPages[6][7] = {
 	{ SPL_NULL, SPL_FIREBOLT, SPL_CBOLT, SPL_HBOLT, SPL_HEAL, SPL_HEALOTHER, SPL_FLAME },
 	{ SPL_RESURRECT, SPL_FIREWALL, SPL_TELEKINESIS, SPL_LIGHTNING, SPL_TOWN, SPL_FLASH, SPL_STONE },
@@ -619,7 +647,7 @@ void ToggleSpell(int slot)
  * @param nCel Number of letter in Windows-1252
  * @param col text_color color value
  */
-void CPrintString(int nOffset, int nCel, char col)
+void PrintChar(int nOffset, int nCel, char col)
 {
 	/// ASSERT: assert(gpBuffer);
 
@@ -1286,7 +1314,7 @@ void InitControlPan()
 	nGoldFrame = 1;
 }
 
-void ClearCtrlPan()
+void DrawCtrlPan()
 {
 	DrawPanelBox(0, sgbPlrTalkTbl + 16, PANEL_WIDTH, PANEL_HEIGHT, PANEL_X, PANEL_Y);
 	DrawInfoBox();
@@ -1296,7 +1324,7 @@ void ClearCtrlPan()
  * Draws the control panel buttons in their current state. If the button is in the default
  * state draw it from the panel cel(extract its sub-rect). Else draw it from the buttons cel.
  */
-void DrawCtrlPan()
+void DrawCtrlBtns()
 {
 	int i;
 
@@ -1706,10 +1734,10 @@ void DrawInfoBox()
 		}
 	}
 	if (infostr[0] || pnumlines)
-		control_draw_info_str();
+		PrintInfo();
 }
 
-void control_draw_info_str()
+void PrintInfo()
 {
 	int yo, lo, i;
 
@@ -1717,18 +1745,18 @@ void control_draw_info_str()
 		yo = 0;
 		lo = 1;
 		if (infostr[0]) {
-			control_print_info_str(0, infostr, TRUE, pnumlines);
+			CPrintString(0, infostr, TRUE, pnumlines);
 			yo = 1;
 			lo = 0;
 		}
 
 		for (i = 0; i < pnumlines; i++) {
-			control_print_info_str(i + yo, panelstr[i], pstrjust[i], pnumlines - lo);
+			CPrintString(i + yo, panelstr[i], pstrjust[i], pnumlines - lo);
 		}
 	}
 }
 
-void control_print_info_str(int y, char *str, BOOL center, int lines)
+void CPrintString(int y, char *str, BOOL center, int lines)
 {
 	BYTE c;
 	char *tmp;
@@ -1753,7 +1781,7 @@ void control_print_info_str(int y, char *str, BOOL center, int lines)
 		lineOffset += fontkern[c] + 2;
 		if (c) {
 			if (lineOffset < 288) {
-				CPrintString(lineStart, c, infoclr);
+				PrintChar(lineStart, c, infoclr);
 			}
 		}
 		lineStart += fontkern[c] + 2;
@@ -1769,7 +1797,7 @@ void PrintGameStr(int x, int y, char *str, int color)
 		c = gbFontTransTbl[(BYTE)*str++];
 		c = fontframe[c];
 		if (c)
-			CPrintString(off, c, color);
+			PrintChar(off, c, color);
 		off += fontkern[c] + 1;
 	}
 }
@@ -2006,7 +2034,7 @@ void ADD_PlrStringXY(int x, int y, int width, char *pszStr, char col)
 		line += fontkern[c] + 1;
 		if (c) {
 			if (line < widthOffset)
-				CPrintString(nOffset, c, col);
+				PrintChar(nOffset, c, col);
 		}
 		nOffset += fontkern[c] + 1;
 	}
@@ -2045,7 +2073,7 @@ void MY_PlrStringXY(int x, int y, int endX, char *pszStr, char col, int base)
 		line += fontkern[c] + base;
 		if (c) {
 			if (line < widthOffset)
-				CPrintString(nOffset, c, col);
+				PrintChar(nOffset, c, col);
 		}
 		nOffset += fontkern[c] + base;
 	}
@@ -2386,7 +2414,7 @@ void PrintSBookStr(int x, int y, BOOL cjustflag, char *pszStr, char col)
 		line += fontkern[c] + 1;
 		if (c) {
 			if (line <= 222)
-				CPrintString(width, c, col);
+				PrintChar(width, c, col);
 		}
 		width += fontkern[c] + 1;
 	}
@@ -2606,7 +2634,7 @@ char *control_print_talk_msg(char *msg, int x, int y, int *nOffset, int color)
 			return msg;
 		msg++;
 		if (c) {
-			CPrintString(*nOffset, c, color);
+			PrintChar(*nOffset, c, color);
 		}
 		*nOffset += fontkern[c] + 1;
 	}
